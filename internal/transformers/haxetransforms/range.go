@@ -23,13 +23,46 @@ func (tx *rangeTransformer) visit(node *ast.Node) *ast.Node {
 	}
 }
 
+// Helper function to unwrap ParenthesizedExpression
+func unwrapParenthesized(expr *ast.Expression) *ast.Expression {
+	for expr != nil && ast.IsParenthesizedExpression(expr) {
+		expr = expr.AsParenthesizedExpression().Expression
+	}
+	return expr
+}
+
 func (tx *rangeTransformer) visitForInStatement(node *ast.ForInOrOfStatement) *ast.Node {
-	// Check if the expression is a BinaryExpression with DotDotDotToken
-	if !ast.IsBinaryExpression(node.Expression) {
+	// Check if the expression is a CallExpression with stepBy
+	var rangeExpr *ast.Expression
+	var stepExpr *ast.Expression
+	
+	expr := node.Expression
+	
+	if ast.IsCallExpression(expr) {
+		callExpr := expr.AsCallExpression()
+		
+		// Check if it's a .stepBy() call
+		if ast.IsPropertyAccessExpression(callExpr.Expression) {
+			propAccess := callExpr.Expression.AsPropertyAccessExpression()
+			if ast.IsIdentifier(propAccess.Name()) && propAccess.Name().AsIdentifier().Text == "stepBy" {
+				// Extract the range expression (may be wrapped in parentheses)
+				rangeExpr = unwrapParenthesized(propAccess.Expression)
+				if len(callExpr.Arguments.Nodes) > 0 {
+					stepExpr = callExpr.Arguments.Nodes[0]
+				}
+			}
+		}
+	} else {
+		// No stepBy call, unwrap any parentheses and check for plain range expression
+		rangeExpr = unwrapParenthesized(expr)
+	}
+	
+	// Check if rangeExpr is a BinaryExpression with DotDotDotToken
+	if rangeExpr == nil || !ast.IsBinaryExpression(rangeExpr) {
 		return tx.Visitor().VisitEachChild(node.AsNode())
 	}
 
-	binary := node.Expression.AsBinaryExpression()
+	binary := rangeExpr.AsBinaryExpression()
 	
 	// Check for range operators (... only, since .. is not defined)
 	isExclusiveRange := binary.OperatorToken.Kind == ast.KindDotDotDotToken
@@ -40,6 +73,8 @@ func (tx *rangeTransformer) visitForInStatement(node *ast.ForInOrOfStatement) *a
 
 	// Transform: for (let i in start...end) { body }
 	// Into: for (let i = start; i < end; i++) { body }
+	// Or: for (let i in (start...end).stepBy(step)) { body }
+	// Into: for (let i = start; i < end; i += step) { body }
 
 	factory := tx.Factory()
 	
@@ -80,11 +115,24 @@ func (tx *rangeTransformer) visitForInStatement(node *ast.ForInOrOfStatement) *a
 		tx.Visitor().VisitNode(binary.Right),
 	)
 
-	// Create incrementor: i++
-	incrementor := factory.NewPostfixUnaryExpression(
-		varDecl.Name().Clone(factory),
-		ast.KindPlusPlusToken,
-	)
+	// Create incrementor: i++ or i += step
+	var incrementor *ast.Expression
+	if stepExpr != nil {
+		// i += step
+		incrementor = factory.NewBinaryExpression(
+			nil, // modifiers
+			varDecl.Name().Clone(factory),
+			nil, // type
+			factory.NewToken(ast.KindPlusEqualsToken),
+			tx.Visitor().VisitNode(stepExpr),
+		)
+	} else {
+		// i++
+		incrementor = factory.NewPostfixUnaryExpression(
+			varDecl.Name().Clone(factory),
+			ast.KindPlusPlusToken,
+		)
+	}
 
 	// Visit the statement body
 	statement := tx.Visitor().VisitNode(node.Statement)
