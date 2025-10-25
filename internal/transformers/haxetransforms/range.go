@@ -106,12 +106,36 @@ func (tx *rangeTransformer) visitForInStatement(node *ast.ForInOrOfStatement) *a
 		}),
 	)
 
-	// Create condition: i < end
+	// Determine if we need < or > based on step direction
+	// For negative steps, we need i > end, for positive steps i < end
+	var conditionOp ast.Kind = ast.KindLessThanToken
+	var isNegativeStep bool
+	
+	// Check if stepExpr is a negative number literal or prefixed with minus
+	if stepExpr != nil {
+		if ast.IsNumericLiteral(stepExpr) {
+			// Check if it's a negative number
+			if numLit := stepExpr.AsNumericLiteral(); numLit.Text[0] == '-' {
+				isNegativeStep = true
+			}
+		} else if ast.IsPrefixUnaryExpression(stepExpr) {
+			prefixExpr := stepExpr.AsPrefixUnaryExpression()
+			if prefixExpr.Operator == ast.KindMinusToken {
+				isNegativeStep = true
+			}
+		}
+	}
+	
+	if isNegativeStep {
+		conditionOp = ast.KindGreaterThanToken
+	}
+	
+	// Create condition: i < end (or i > end for negative step)
 	condition := factory.NewBinaryExpression(
 		nil, // modifiers
 		varDecl.Name().Clone(factory),
 		nil, // type
-		factory.NewToken(ast.KindLessThanToken),
+		factory.NewToken(conditionOp),
 		tx.Visitor().VisitNode(binary.Right),
 	)
 
