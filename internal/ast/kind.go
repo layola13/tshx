@@ -188,6 +188,7 @@ const (
 	KindFloatKeyword   // Haxe Float type
 	KindBoolKeyword    // Haxe Bool type (different from BooleanKeyword)
 	KindDynamicKeyword // Haxe Dynamic type
+	KindTypedefKeyword // Haxe typedef keyword (type alias definition)
 	KindDeferKeyword   // LastKeyword and LastToken and LastContextualKeyword
 	// Parse tree nodes
 	// Names

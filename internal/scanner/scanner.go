@@ -123,6 +123,7 @@ var textToKeyword = map[string]ast.Kind{
 	"Float":       ast.KindFloatKeyword,
 	"Bool":        ast.KindBoolKeyword,
 	"Dynamic":     ast.KindDynamicKeyword,
+	"typedef":     ast.KindTypedefKeyword,
 }
 
 var textToToken = func() map[string]ast.Kind {

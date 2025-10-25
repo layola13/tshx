@@ -984,7 +984,7 @@ func (p *Parser) parseStatement() *ast.Statement {
 		return p.parseDebuggerStatement()
 	case ast.KindAtToken:
 		return p.parseDeclaration()
-	case ast.KindAsyncKeyword, ast.KindInterfaceKeyword, ast.KindTypeKeyword, ast.KindModuleKeyword, ast.KindNamespaceKeyword,
+	case ast.KindAsyncKeyword, ast.KindInterfaceKeyword, ast.KindTypeKeyword, ast.KindTypedefKeyword, ast.KindModuleKeyword, ast.KindNamespaceKeyword,
 		ast.KindDeclareKeyword, ast.KindConstKeyword, ast.KindEnumKeyword, ast.KindExportKeyword, ast.KindImportKeyword,
 		ast.KindPrivateKeyword, ast.KindProtectedKeyword, ast.KindPublicKeyword, ast.KindAbstractKeyword, ast.KindAccessorKeyword,
 		ast.KindStaticKeyword, ast.KindReadonlyKeyword, ast.KindGlobalKeyword:
@@ -1032,7 +1032,7 @@ func (p *Parser) parseDeclarationWorker(pos int, hasJSDoc bool, modifiers *ast.M
 		return p.parseClassDeclaration(pos, hasJSDoc, modifiers)
 	case ast.KindInterfaceKeyword:
 		return p.parseInterfaceDeclaration(pos, hasJSDoc, modifiers)
-	case ast.KindTypeKeyword:
+	case ast.KindTypeKeyword, ast.KindTypedefKeyword:
 		return p.parseTypeAliasDeclaration(pos, hasJSDoc, modifiers)
 	case ast.KindEnumKeyword:
 		return p.parseEnumDeclaration(pos, hasJSDoc, modifiers)
@@ -2066,7 +2066,12 @@ func (p *Parser) parseInterfaceDeclaration(pos int, hasJSDoc bool, modifiers *as
 }
 
 func (p *Parser) parseTypeAliasDeclaration(pos int, hasJSDoc bool, modifiers *ast.ModifierList) *ast.Node {
-	p.parseExpected(ast.KindTypeKeyword)
+	// Accept both 'type' and 'typedef' keywords
+	if p.token == ast.KindTypedefKeyword {
+		p.parseExpected(ast.KindTypedefKeyword)
+	} else {
+		p.parseExpected(ast.KindTypeKeyword)
+	}
 	if p.hasPrecedingLineBreak() {
 		p.parseErrorAtCurrentToken(diagnostics.Line_break_not_permitted_here)
 	}
@@ -6045,7 +6050,7 @@ func (p *Parser) isStartOfStatement() bool {
 	case ast.KindConstKeyword, ast.KindExportKeyword:
 		return p.isStartOfDeclaration()
 	case ast.KindAsyncKeyword, ast.KindDeclareKeyword, ast.KindInterfaceKeyword, ast.KindModuleKeyword, ast.KindNamespaceKeyword,
-		ast.KindTypeKeyword, ast.KindGlobalKeyword, ast.KindDeferKeyword:
+		ast.KindTypeKeyword, ast.KindTypedefKeyword, ast.KindGlobalKeyword, ast.KindDeferKeyword:
 		// When these don't start a declaration, they're an identifier in an expression statement
 		return true
 	case ast.KindAccessorKeyword, ast.KindPublicKeyword, ast.KindPrivateKeyword, ast.KindProtectedKeyword, ast.KindStaticKeyword,
@@ -6094,7 +6099,7 @@ func (p *Parser) scanStartOfDeclaration() bool {
 		//   I {}
 		//
 		// could be legal, it would add complexity for very little gain.
-		case ast.KindInterfaceKeyword, ast.KindTypeKeyword, ast.KindDeferKeyword:
+		case ast.KindInterfaceKeyword, ast.KindTypeKeyword, ast.KindTypedefKeyword, ast.KindDeferKeyword:
 			return p.nextTokenIsIdentifierOnSameLine()
 		case ast.KindModuleKeyword, ast.KindNamespaceKeyword:
 			return p.nextTokenIsIdentifierOrStringLiteralOnSameLine()
@@ -6106,8 +6111,8 @@ func (p *Parser) scanStartOfDeclaration() bool {
 			if p.hasPrecedingLineBreak() {
 				return false
 			}
-			if previousToken == ast.KindDeclareKeyword && p.token == ast.KindTypeKeyword {
-				// If we see 'declare type', then commit to parsing a type alias. parseTypeAliasDeclaration will
+			if previousToken == ast.KindDeclareKeyword && (p.token == ast.KindTypeKeyword || p.token == ast.KindTypedefKeyword) {
+				// If we see 'declare type' or 'declare typedef', then commit to parsing a type alias. parseTypeAliasDeclaration will
 				// report Line_break_not_permitted_here if needed.
 				return true
 			}
@@ -6124,7 +6129,7 @@ func (p *Parser) scanStartOfDeclaration() bool {
 				p.token == ast.KindDefaultKeyword || p.token == ast.KindAsKeyword || p.token == ast.KindAtToken {
 				return true
 			}
-			if p.token == ast.KindTypeKeyword {
+			if p.token == ast.KindTypeKeyword || p.token == ast.KindTypedefKeyword {
 				p.nextToken()
 				return p.token == ast.KindAsteriskToken || p.token == ast.KindOpenBraceToken || p.isIdentifier() && !p.hasPrecedingLineBreak()
 			}
