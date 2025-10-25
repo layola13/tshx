@@ -1722,6 +1722,25 @@ func (p *Parser) parseClassElement() *ast.Node {
 		return result
 	}
 	modifiers := p.parseModifiersEx(true /*allowDecorators*/, true /*permitConstAsModifier*/, true /*stopOnStartOfClassStaticBlock*/)
+	
+	// Check for Haxe-style property declaration: [modifiers] var name(get, set): type
+	if p.token == ast.KindVarKeyword {
+		// This is a Haxe-style property declaration
+		p.nextToken() // consume 'var'
+		name := p.parsePropertyName()
+		
+		// Check if followed by (get, set) or similar accessor pattern
+		if p.token == ast.KindOpenParenToken && p.lookAhead((*Parser).isHaxePropertyAccessor) {
+			return p.parseHaxePropertyDeclaration(pos, hasJSDoc, modifiers, name)
+		}
+		
+		// If not a Haxe accessor pattern, this is an error - var is not valid in classes
+		p.parseErrorAtCurrentToken(diagnostics.Unexpected_token)
+		// Try to recover by parsing as a regular property
+		questionToken := p.parseOptionalToken(ast.KindQuestionToken)
+		return p.parsePropertyDeclaration(pos, hasJSDoc, modifiers, name, questionToken)
+	}
+	
 	if p.token == ast.KindStaticKeyword && p.lookAhead((*Parser).nextTokenIsOpenBrace) {
 		return p.parseClassStaticBlockDeclaration(pos, hasJSDoc, modifiers)
 	}
@@ -1831,6 +1850,92 @@ func (p *Parser) parseMethodDeclaration(pos int, hasJSDoc bool, modifiers *ast.M
 
 func modifierListHasAsync(modifiers *ast.ModifierList) bool {
 	return modifiers != nil && core.Some(modifiers.Nodes, isAsyncModifier)
+}
+
+// isHaxePropertyAccessor checks if we're looking at a Haxe-style property accessor pattern
+// e.g., (get, set) or (get, never) etc.
+func (p *Parser) isHaxePropertyAccessor() bool {
+	// Current token should be OpenParenToken
+	if p.token != ast.KindOpenParenToken {
+		return false
+	}
+	p.nextToken()
+	
+	// First accessor should be an identifier (get, set, never, default, null)
+	if !tokenIsIdentifierOrKeyword(p.token) {
+		return false
+	}
+	firstAccessor := p.scanner.TokenValue()
+	if !isValidAccessorKeyword(firstAccessor) {
+		return false
+	}
+	p.nextToken()
+	
+	// Should be a comma
+	if p.token != ast.KindCommaToken {
+		return false
+	}
+	p.nextToken()
+	
+	// Second accessor should be an identifier
+	if !tokenIsIdentifierOrKeyword(p.token) {
+		return false
+	}
+	secondAccessor := p.scanner.TokenValue()
+	if !isValidAccessorKeyword(secondAccessor) {
+		return false
+	}
+	p.nextToken()
+	
+	// Should be a close paren
+	return p.token == ast.KindCloseParenToken
+}
+
+// isValidAccessorKeyword checks if the string is a valid accessor keyword
+func isValidAccessorKeyword(s string) bool {
+	return s == "get" || s == "set" || s == "never" || s == "default" || s == "null"
+}
+
+// parseHaxePropertyDeclaration parses a Haxe-style property declaration
+// e.g., public var width(get, set): number;
+func (p *Parser) parseHaxePropertyDeclaration(pos int, hasJSDoc bool, modifiers *ast.ModifierList, name *ast.Node) *ast.Node {
+	// Parse (get, set) or similar accessor syntax
+	p.parseExpected(ast.KindOpenParenToken)
+	
+	// Parse first accessor (e.g., 'get')
+	var getAccessor *ast.Node
+	if tokenIsIdentifierOrKeyword(p.token) {
+		getAccessor = p.parseTokenNode()
+	} else {
+		p.parseErrorAtCurrentToken(diagnostics.Identifier_expected)
+		getAccessor = p.createMissingIdentifier()
+	}
+	
+	p.parseExpected(ast.KindCommaToken)
+	
+	// Parse second accessor (e.g., 'set')
+	var setAccessor *ast.Node
+	if tokenIsIdentifierOrKeyword(p.token) {
+		setAccessor = p.parseTokenNode()
+	} else {
+		p.parseErrorAtCurrentToken(diagnostics.Identifier_expected)
+		setAccessor = p.createMissingIdentifier()
+	}
+	
+	p.parseExpected(ast.KindCloseParenToken)
+	
+	// Parse type annotation
+	typeNode := p.parseTypeAnnotation()
+	
+	// Parse optional initializer
+	initializer := doInContext(p, ast.NodeFlagsYieldContext|ast.NodeFlagsAwaitContext|ast.NodeFlagsDisallowInContext, false, (*Parser).parseInitializer)
+	
+	p.parseSemicolonAfterPropertyName(name, typeNode, initializer)
+	
+	result := p.finishNode(p.factory.NewPropertyDeclarationWithAccessors(modifiers, name, getAccessor, setAccessor, typeNode, initializer), pos)
+	p.withJSDoc(result, hasJSDoc)
+	p.checkJSSyntax(result)
+	return result
 }
 
 func (p *Parser) parsePropertyDeclaration(pos int, hasJSDoc bool, modifiers *ast.ModifierList, name *ast.Node, questionToken *ast.Node) *ast.Node {

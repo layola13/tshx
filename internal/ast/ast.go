@@ -5972,6 +5972,9 @@ type PropertyDeclaration struct {
 	compositeNodeBase
 	Type        *TypeNode   // TypeNode. Optional
 	Initializer *Expression // Expression. Optional
+	// Haxe-style property accessors: (get, set), (get, never), etc.
+	GetAccessor *TokenNode // Token for getter mode: 'get', 'never', 'default', 'null'. Optional
+	SetAccessor *TokenNode // Token for setter mode: 'set', 'never', 'default', 'null'. Optional
 }
 
 func (f *NodeFactory) NewPropertyDeclaration(modifiers *ModifierList, name *PropertyName, postfixToken *TokenNode, typeNode *TypeNode, initializer *Expression) *Node {
@@ -5984,6 +5987,18 @@ func (f *NodeFactory) NewPropertyDeclaration(modifiers *ModifierList, name *Prop
 	return f.newNode(KindPropertyDeclaration, data)
 }
 
+// NewPropertyDeclarationWithAccessors creates a property declaration with Haxe-style accessors
+func (f *NodeFactory) NewPropertyDeclarationWithAccessors(modifiers *ModifierList, name *PropertyName, getAccessor *TokenNode, setAccessor *TokenNode, typeNode *TypeNode, initializer *Expression) *Node {
+	data := &PropertyDeclaration{}
+	data.modifiers = modifiers
+	data.name = name
+	data.GetAccessor = getAccessor
+	data.SetAccessor = setAccessor
+	data.Type = typeNode
+	data.Initializer = initializer
+	return f.newNode(KindPropertyDeclaration, data)
+}
+
 func (f *NodeFactory) UpdatePropertyDeclaration(node *PropertyDeclaration, modifiers *ModifierList, name *PropertyName, postfixToken *TokenNode, typeNode *TypeNode, initializer *Expression) *Node {
 	if modifiers != node.modifiers || name != node.name || postfixToken != node.PostfixToken || typeNode != node.Type || initializer != node.Initializer {
 		return updateNode(f.NewPropertyDeclaration(modifiers, name, postfixToken, typeNode, initializer), node.AsNode(), f.hooks)
@@ -5991,15 +6006,31 @@ func (f *NodeFactory) UpdatePropertyDeclaration(node *PropertyDeclaration, modif
 	return node.AsNode()
 }
 
+// UpdatePropertyDeclarationWithAccessors updates a property declaration with Haxe-style accessors
+func (f *NodeFactory) UpdatePropertyDeclarationWithAccessors(node *PropertyDeclaration, modifiers *ModifierList, name *PropertyName, getAccessor *TokenNode, setAccessor *TokenNode, typeNode *TypeNode, initializer *Expression) *Node {
+	if modifiers != node.modifiers || name != node.name || getAccessor != node.GetAccessor || setAccessor != node.SetAccessor || typeNode != node.Type || initializer != node.Initializer {
+		return updateNode(f.NewPropertyDeclarationWithAccessors(modifiers, name, getAccessor, setAccessor, typeNode, initializer), node.AsNode(), f.hooks)
+	}
+	return node.AsNode()
+}
+
 func (node *PropertyDeclaration) ForEachChild(v Visitor) bool {
-	return visitModifiers(v, node.modifiers) || visit(v, node.name) || visit(v, node.PostfixToken) || visit(v, node.Type) || visit(v, node.Initializer)
+	return visitModifiers(v, node.modifiers) || visit(v, node.name) || visit(v, node.PostfixToken) || visit(v, node.GetAccessor) || visit(v, node.SetAccessor) || visit(v, node.Type) || visit(v, node.Initializer)
 }
 
 func (node *PropertyDeclaration) VisitEachChild(v *NodeVisitor) *Node {
+	// If this property has Haxe-style accessors, use the accessor-aware update
+	if node.GetAccessor != nil || node.SetAccessor != nil {
+		return v.Factory.UpdatePropertyDeclarationWithAccessors(node, v.visitModifiers(node.modifiers), v.visitNode(node.name), v.visitToken(node.GetAccessor), v.visitToken(node.SetAccessor), v.visitNode(node.Type), v.visitNode(node.Initializer))
+	}
 	return v.Factory.UpdatePropertyDeclaration(node, v.visitModifiers(node.modifiers), v.visitNode(node.name), v.visitToken(node.PostfixToken), v.visitNode(node.Type), v.visitNode(node.Initializer))
 }
 
 func (node *PropertyDeclaration) Clone(f NodeFactoryCoercible) *Node {
+	// If this property has Haxe-style accessors, use the accessor-aware clone
+	if node.GetAccessor != nil || node.SetAccessor != nil {
+		return cloneNode(f.AsNodeFactory().NewPropertyDeclarationWithAccessors(node.Modifiers(), node.Name(), node.GetAccessor, node.SetAccessor, node.Type, node.Initializer), node.AsNode(), f.AsNodeFactory().hooks)
+	}
 	return cloneNode(f.AsNodeFactory().NewPropertyDeclaration(node.Modifiers(), node.Name(), node.PostfixToken, node.Type, node.Initializer), node.AsNode(), f.AsNodeFactory().hooks)
 }
 
