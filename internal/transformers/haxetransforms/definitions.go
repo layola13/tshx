@@ -6,8 +6,10 @@ import (
 
 // HaxeTransformer chains all Haxe-specific syntax transformers
 var NewHaxeTransformer = transformers.Chain(
-	newRangeTransformer,
-	newADTEnumTransformer,
+	newHaxeTypesTransformer,     // Transform Haxe types (Int/Float/Bool/Dynamic) to TS types
+	newRangeTransformer,         // Transform range expressions to for loops
+	newADTEnumTransformer,       // Transform ADT enums
+	newSwitchPatternTransformer, // Transform switch pattern matching with ADT enums
 )
 
 // GetHaxeTransformer returns the Haxe transformer chain

@@ -102,6 +102,9 @@ func getScriptTransformers(emitContext *printer.EmitContext, host printer.EmitHo
 		GetEmitModuleFormatOfFile: host.GetEmitModuleFormatOfFile,
 	}
 
+	// transform Haxe-specific syntax (must come before TS transforms to handle ADT enums)
+	tx = append(tx, haxetransforms.GetHaxeTransformer(&opts))
+
 	// transform TypeScript syntax
 	{
 		// erase types
@@ -120,9 +123,6 @@ func getScriptTransformers(emitContext *printer.EmitContext, host printer.EmitHo
 	if options.GetJSXTransformEnabled() {
 		tx = append(tx, jsxtransforms.NewJSXTransformer(&opts))
 	}
-
-	// transform Haxe-specific syntax (must come before ES transforms)
-	tx = append(tx, haxetransforms.GetHaxeTransformer(&opts))
 
 	downleveler := estransforms.GetESTransformer(&opts)
 	if downleveler != nil {

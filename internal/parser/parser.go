@@ -549,7 +549,12 @@ func (p *Parser) parseDelimitedList(kind ParsingContext, parseElement func(p *Pa
 			// We didn't get a comma, and the list wasn't terminated, explicitly parse
 			// out a comma so we give a good error message.
 			if p.token != ast.KindCommaToken && kind == PCEnumMembers {
-				p.parseErrorAtCurrentToken(diagnostics.An_enum_member_name_must_be_followed_by_a_or)
+				// For Haxe-style enums, accept semicolon as delimiter
+				if p.token == ast.KindSemicolonToken {
+					p.nextToken() // consume the semicolon
+				} else {
+					p.parseErrorAtCurrentToken(diagnostics.An_enum_member_name_must_be_followed_by_a_or)
+				}
 			} else {
 				p.parseExpected(ast.KindCommaToken)
 			}
@@ -1988,8 +1993,23 @@ func (p *Parser) parseEnumMember() *ast.Node {
 	pos := p.nodePos()
 	hasJSDoc := p.hasPrecedingJSDocComment()
 	name := p.parsePropertyName()
+	
+	// Check for Haxe-style enum member with parameters: Rgb(r: Int, g: Int, b: Int)
+	var parameters *ast.NodeList
+	if p.token == ast.KindOpenParenToken {
+		// Parse parameter list for ADT enum support
+		parameters = p.parseParameters(ParseFlagsNone)
+	}
+	
 	initializer := doInContext(p, ast.NodeFlagsDisallowInContext, false, (*Parser).parseInitializer)
-	result := p.finishNode(p.factory.NewEnumMember(name, initializer), pos)
+	
+	var result *ast.Node
+	if parameters != nil {
+		result = p.finishNode(p.factory.NewEnumMemberWithParams(name, parameters, initializer), pos)
+	} else {
+		result = p.finishNode(p.factory.NewEnumMember(name, initializer), pos)
+	}
+	
 	p.withJSDoc(result, hasJSDoc)
 	return result
 }
@@ -2611,7 +2631,8 @@ func (p *Parser) nextIsStartOfType() bool {
 func (p *Parser) parseNonArrayType() *ast.Node {
 	switch p.token {
 	case ast.KindAnyKeyword, ast.KindUnknownKeyword, ast.KindStringKeyword, ast.KindNumberKeyword, ast.KindBigIntKeyword,
-		ast.KindSymbolKeyword, ast.KindBooleanKeyword, ast.KindUndefinedKeyword, ast.KindNeverKeyword, ast.KindObjectKeyword:
+		ast.KindSymbolKeyword, ast.KindBooleanKeyword, ast.KindUndefinedKeyword, ast.KindNeverKeyword, ast.KindObjectKeyword,
+		ast.KindIntKeyword, ast.KindFloatKeyword, ast.KindBoolKeyword, ast.KindDynamicKeyword:
 		state := p.mark()
 		keywordTypeNode := p.parseKeywordTypeNode()
 		// If these are followed by a dot then parse these out as a dotted type reference instead
@@ -6052,6 +6073,7 @@ func (p *Parser) isStartOfType(inStartOfParameter bool) bool {
 	case ast.KindAnyKeyword, ast.KindUnknownKeyword, ast.KindStringKeyword, ast.KindNumberKeyword, ast.KindBigIntKeyword,
 		ast.KindBooleanKeyword, ast.KindReadonlyKeyword, ast.KindSymbolKeyword, ast.KindUniqueKeyword, ast.KindVoidKeyword,
 		ast.KindUndefinedKeyword, ast.KindNullKeyword, ast.KindThisKeyword, ast.KindTypeOfKeyword, ast.KindNeverKeyword,
+		ast.KindIntKeyword, ast.KindFloatKeyword, ast.KindBoolKeyword, ast.KindDynamicKeyword,
 		ast.KindOpenBraceToken, ast.KindOpenBracketToken, ast.KindLessThanToken, ast.KindBarToken, ast.KindAmpersandToken,
 		ast.KindNewKeyword, ast.KindStringLiteral, ast.KindNumericLiteral, ast.KindBigIntLiteral, ast.KindTrueKeyword,
 		ast.KindFalseKeyword, ast.KindObjectKeyword, ast.KindAsteriskToken, ast.KindQuestionToken, ast.KindExclamationToken,

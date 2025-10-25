@@ -118,6 +118,11 @@ var textToKeyword = map[string]ast.Kind{
 	"async":       ast.KindAsyncKeyword,
 	"await":       ast.KindAwaitKeyword,
 	"of":          ast.KindOfKeyword,
+	// Haxe type keywords
+	"Int":         ast.KindIntKeyword,
+	"Float":       ast.KindFloatKeyword,
+	"Bool":        ast.KindBoolKeyword,
+	"Dynamic":     ast.KindDynamicKeyword,
 }
 
 var textToToken = func() map[string]ast.Kind {

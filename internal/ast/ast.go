@@ -2606,7 +2606,12 @@ func (node *Token) computeSubtreeFacts() SubtreeFacts {
 		KindVoidKeyword,
 		KindUnknownKeyword,
 		KindUndefinedKeyword, // `undefined` is an Identifier in the expression case.
-		KindExportKeyword:    // `export` is TypeScript syntax in a namespace
+		KindExportKeyword,    // `export` is TypeScript syntax in a namespace
+		// Haxe type keywords - will be transformed to TypeScript types
+		KindIntKeyword,
+		KindFloatKeyword,
+		KindBoolKeyword,
+		KindDynamicKeyword:
 		return SubtreeContainsTypeScript
 	case KindAccessorKeyword:
 		return SubtreeContainsClassFields
@@ -4423,12 +4428,22 @@ type EnumMember struct {
 	NodeBase
 	NamedMemberBase
 	compositeNodeBase
-	Initializer *Expression // Expression. Optional
+	Initializer *Expression  // Expression. Optional
+	Parameters  *ParameterList // ParameterList. Optional - for ADT enum support
 }
 
 func (f *NodeFactory) NewEnumMember(name *PropertyName, initializer *Expression) *Node {
 	data := &EnumMember{}
 	data.name = name
+	data.Initializer = initializer
+	return f.newNode(KindEnumMember, data)
+}
+
+// NewEnumMemberWithParams creates an enum member with parameters for ADT enum support
+func (f *NodeFactory) NewEnumMemberWithParams(name *PropertyName, parameters *ParameterList, initializer *Expression) *Node {
+	data := &EnumMember{}
+	data.name = name
+	data.Parameters = parameters
 	data.Initializer = initializer
 	return f.newNode(KindEnumMember, data)
 }
@@ -4440,16 +4455,34 @@ func (f *NodeFactory) UpdateEnumMember(node *EnumMember, name *PropertyName, ini
 	return node.AsNode()
 }
 
+// UpdateEnumMemberWithParams updates an enum member with parameters
+func (f *NodeFactory) UpdateEnumMemberWithParams(node *EnumMember, name *PropertyName, parameters *ParameterList, initializer *Expression) *Node {
+	if name != node.name || parameters != node.Parameters || initializer != node.Initializer {
+		return updateNode(f.NewEnumMemberWithParams(name, parameters, initializer), node.AsNode(), f.hooks)
+	}
+	return node.AsNode()
+}
+
 func (node *EnumMember) ForEachChild(v Visitor) bool {
-	return visit(v, node.name) || visit(v, node.Initializer)
+	if visit(v, node.name) {
+		return true
+	}
+	if node.Parameters != nil && visitNodes(v, node.Parameters.Nodes) {
+		return true
+	}
+	return visit(v, node.Initializer)
 }
 
 func (node *EnumMember) VisitEachChild(v *NodeVisitor) *Node {
-	return v.Factory.UpdateEnumMember(node, v.visitNode(node.name), v.visitNode(node.Initializer))
+	var parameters *ParameterList
+	if node.Parameters != nil {
+		parameters = v.visitParameters(node.Parameters)
+	}
+	return v.Factory.UpdateEnumMemberWithParams(node, v.visitNode(node.name), parameters, v.visitNode(node.Initializer))
 }
 
 func (node *EnumMember) Clone(f NodeFactoryCoercible) *Node {
-	return cloneNode(f.AsNodeFactory().NewEnumMember(node.Name(), node.Initializer), node.AsNode(), f.AsNodeFactory().hooks)
+	return cloneNode(f.AsNodeFactory().NewEnumMemberWithParams(node.Name(), node.Parameters, node.Initializer), node.AsNode(), f.AsNodeFactory().hooks)
 }
 
 func (node *EnumMember) Name() *DeclarationName {
@@ -4457,9 +4490,14 @@ func (node *EnumMember) Name() *DeclarationName {
 }
 
 func (node *EnumMember) computeSubtreeFacts() SubtreeFacts {
-	return propagateSubtreeFacts(node.name) |
-		propagateSubtreeFacts(node.Initializer) |
-		SubtreeContainsTypeScript
+	facts := propagateSubtreeFacts(node.name) | SubtreeContainsTypeScript
+	if node.Parameters != nil {
+		for _, p := range node.Parameters.Nodes {
+			facts |= propagateSubtreeFacts(p)
+		}
+	}
+	facts |= propagateSubtreeFacts(node.Initializer)
+	return facts
 }
 
 func IsEnumMember(node *Node) bool {
@@ -11115,4 +11153,59 @@ type PragmaSpecification struct {
 
 func (spec *PragmaSpecification) IsTripleSlash() bool {
 	return (spec.Kind & PragmaKindTripleSlashXML) > 0
+}
+
+// Haxe Match Expression
+// match (expr) { case Pattern(args) => expr; case _ => expr; }
+type MatchExpression struct {
+	ExpressionBase
+	compositeNodeBase
+	Expression *Expression // The value being matched
+	Clauses    []*Node     // Match cases (MatchClause nodes)
+}
+
+func (f *NodeFactory) NewMatchExpression(expression *Expression, clauses []*Node) *Node {
+	data := &MatchExpression{}
+	data.Expression = expression
+	data.Clauses = clauses
+	return f.newNode(KindMatchExpression, data)
+}
+
+func (f *NodeFactory) UpdateMatchExpression(node *MatchExpression, expression *Expression, clauses []*Node) *Node {
+	clausesChanged := len(node.Clauses) != len(clauses)
+	if !clausesChanged {
+		for i := range clauses {
+			if node.Clauses[i] != clauses[i] {
+				clausesChanged = true
+				break
+			}
+		}
+	}
+	if expression != node.Expression || clausesChanged {
+		return updateNode(f.NewMatchExpression(expression, clauses), node.AsNode(), f.hooks)
+	}
+	return node.AsNode()
+}
+
+// MatchClause represents a single case in a match expression
+// case Pattern(args) => expression
+type MatchClause struct {
+	NodeBase
+	compositeNodeBase
+	Pattern    *Expression // The pattern to match (can be CallExpression or Identifier)
+	Expression *Expression // The result expression
+}
+
+func (f *NodeFactory) NewMatchClause(pattern *Expression, expression *Expression) *Node {
+	data := &MatchClause{}
+	data.Pattern = pattern
+	data.Expression = expression
+	return f.newNode(KindMatchClause, data)
+}
+
+func (f *NodeFactory) UpdateMatchClause(node *MatchClause, pattern *Expression, expression *Expression) *Node {
+	if pattern != node.Pattern || expression != node.Expression {
+		return updateNode(f.NewMatchClause(pattern, expression), node.AsNode(), f.hooks)
+	}
+	return node.AsNode()
 }

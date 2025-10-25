@@ -183,7 +183,12 @@ const (
 	KindBigIntKeyword
 	KindOverrideKeyword
 	KindOfKeyword
-	KindDeferKeyword // LastKeyword and LastToken and LastContextualKeyword
+	// Haxe type keywords
+	KindIntKeyword     // Haxe Int type
+	KindFloatKeyword   // Haxe Float type
+	KindBoolKeyword    // Haxe Bool type (different from BooleanKeyword)
+	KindDynamicKeyword // Haxe Dynamic type
+	KindDeferKeyword   // LastKeyword and LastToken and LastContextualKeyword
 	// Parse tree nodes
 	// Names
 	KindQualifiedName
@@ -285,6 +290,8 @@ const (
 	KindReturnStatement
 	KindWithStatement
 	KindSwitchStatement
+	KindMatchExpression
+	KindMatchClause
 	KindLabeledStatement
 	KindThrowStatement
 	KindTryStatement
