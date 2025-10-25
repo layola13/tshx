@@ -3826,7 +3826,11 @@ func (c *Checker) checkForInStatement(node *ast.Node) {
 	}
 	// unknownType is returned i.e. if node.expression is identifier whose name cannot be resolved
 	// in this case error about missing name is already reported - do not report extra one
-	if rightType == c.neverType || !c.isTypeAssignableToKind(rightType, TypeFlagsNonPrimitive|TypeFlagsInstantiableNonPrimitive) {
+	// Special handling for range expressions (e.g., 0...10)
+	isRangeExpression := ast.IsBinaryExpression(data.Expression) &&
+		data.Expression.AsBinaryExpression().OperatorToken.Kind == ast.KindDotDotDotToken
+	
+	if !isRangeExpression && (rightType == c.neverType || !c.isTypeAssignableToKind(rightType, TypeFlagsNonPrimitive|TypeFlagsInstantiableNonPrimitive)) {
 		c.error(data.Expression, diagnostics.The_right_hand_side_of_a_for_in_statement_must_be_of_type_any_an_object_type_or_a_type_parameter_but_here_has_type_0, c.TypeToString(rightType))
 	}
 	c.checkSourceElement(data.Statement)
@@ -12079,6 +12083,18 @@ func (c *Checker) checkBinaryLikeExpression(left *ast.Node, operatorToken *ast.N
 			}
 		}
 		return rightType
+	case ast.KindDotDotDotToken:
+		// Range operator (exclusive): start...end
+		// Check that both operands are numbers
+		leftType = c.checkNonNullType(leftType, left)
+		rightType = c.checkNonNullType(rightType, right)
+		
+		c.checkArithmeticOperandType(left, leftType, diagnostics.The_left_hand_side_of_an_arithmetic_operation_must_be_of_type_any_number_bigint_or_an_enum_type, false)
+		c.checkArithmeticOperandType(right, rightType, diagnostics.The_right_hand_side_of_an_arithmetic_operation_must_be_of_type_any_number_bigint_or_an_enum_type, false)
+		
+		// Range operator returns an iterable of numbers
+		// For now, return number type (the type checker will handle iteration)
+		return c.numberType
 	}
 	panic("Unhandled case in checkBinaryLikeExpression")
 }

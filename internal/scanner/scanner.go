@@ -560,8 +560,15 @@ func (s *Scanner) Scan() ast.Kind {
 			if stringutil.IsDigit(s.charAt(1)) {
 				s.token = s.scanNumber()
 			} else if s.charAt(1) == '.' && s.charAt(2) == '.' {
-				s.pos += 3
-				s.token = ast.KindDotDotDotToken
+				// Check for ...= (inclusive range) - this is Haxe-style range operator
+				if s.charAt(3) == '=' {
+					s.pos += 4
+					s.token = ast.KindDotDotDotEqualsToken
+				} else {
+					// Regular ... (spread/rest operator in TypeScript, or exclusive range in for-in context)
+					s.pos += 3
+					s.token = ast.KindDotDotDotToken
+				}
 			} else {
 				s.pos++
 				s.token = ast.KindDotToken
@@ -1754,8 +1761,15 @@ func (s *Scanner) scanNumber() ast.Kind {
 	exponentPreamble := ""
 	exponentPart := ""
 	if s.char() == '.' {
-		s.pos++
-		fractionalPart = s.scanNumberFragment()
+		// Check if this is a range operator (.. or ...) rather than a decimal point
+		// If the next character is also '.', this is not a decimal point
+		if s.charAt(1) == '.' {
+			// This is '..' or '...', not a decimal point
+			// Don't consume the '.' and stop number scanning here
+		} else {
+			s.pos++
+			fractionalPart = s.scanNumberFragment()
+		}
 	}
 	end := s.pos
 	if s.char() == 'E' || s.char() == 'e' {

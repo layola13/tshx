@@ -34,6 +34,8 @@ const (
 	KindCloseBracketToken
 	KindDotToken
 	KindDotDotDotToken
+	KindDotDotDotLessThanToken // Haxe range operator ... (exclusive)
+	KindDotDotDotEqualsToken   // Haxe range operator ...= (inclusive)
 	KindSemicolonToken
 	KindCommaToken
 	KindQuestionDotToken
@@ -262,6 +264,8 @@ const (
 	KindMetaProperty
 	KindSyntheticExpression
 	KindSatisfiesExpression
+	// Haxe extensions
+	KindRangeExpression // Haxe range expression: 0...10
 	// Misc
 	KindTemplateSpan
 	KindSemicolonClassElement

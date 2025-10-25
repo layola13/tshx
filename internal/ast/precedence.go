@@ -353,6 +353,11 @@ func GetBinaryOperatorPrecedence(operatorKind Kind) OperatorPrecedence {
 	case KindLessThanToken, KindGreaterThanToken, KindLessThanEqualsToken, KindGreaterThanEqualsToken,
 		KindInstanceOfKeyword, KindInKeyword, KindAsKeyword, KindSatisfiesKeyword:
 		return OperatorPrecedenceRelational
+	case KindDotDotDotToken, KindDotDotDotEqualsToken:
+		// Range operators: ... (exclusive range in for-in statements)
+		// Note: KindDotDotDotToken is context-dependent - it's a spread operator in most contexts,
+		// but a range operator in for-in statements
+		return OperatorPrecedenceRelational
 	case KindLessThanLessThanToken, KindGreaterThanGreaterThanToken, KindGreaterThanGreaterThanGreaterThanToken:
 		return OperatorPrecedenceShift
 	case KindPlusToken, KindMinusToken:

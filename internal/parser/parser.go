@@ -1178,7 +1178,8 @@ func (p *Parser) parseForOrForInOrForOfStatement() *ast.Node {
 		p.parseExpected(ast.KindCloseParenToken)
 		result = p.factory.NewForInOrOfStatement(ast.KindForOfStatement, awaitToken, initializer, expression, p.parseStatement())
 	case p.parseOptional(ast.KindInKeyword):
-		expression := p.parseExpressionAllowIn()
+		// Parse for-in expression, which may include range syntax
+		expression := p.parseForInExpression()
 		p.parseExpected(ast.KindCloseParenToken)
 		result = p.factory.NewForInOrOfStatement(ast.KindForInStatement, nil /*awaitToken*/, initializer, expression, p.parseStatement())
 	default:
@@ -4425,6 +4426,25 @@ func (p *Parser) parseConditionalExpressionRest(leftOperand *ast.Expression, pos
 		falseExpression = p.createMissingIdentifier()
 	}
 	return p.finishNode(p.factory.NewConditionalExpression(leftOperand, questionToken, trueExpression, colonToken, falseExpression), pos)
+}
+
+// parseForInExpression parses the expression in a for-in statement, which may include range syntax
+func (p *Parser) parseForInExpression() *ast.Expression {
+	pos := p.nodePos()
+	
+	// Parse the start expression (could be a simple expression or the start of a range)
+	start := p.parseUnaryExpressionOrHigher()
+	
+	// Check if this is a range expression
+	if p.token == ast.KindDotDotDotToken || p.token == ast.KindDotDotDotEqualsToken {
+		// This is a range expression: start...end or start...=end
+		operatorToken := p.parseTokenNode()
+		end := p.parseUnaryExpressionOrHigher()
+		return p.makeBinaryExpression(start, operatorToken, end, pos)
+	}
+	
+	// Not a range, parse as normal expression
+	return p.parseBinaryExpressionRest(ast.OperatorPrecedenceLowest, start, pos)
 }
 
 func (p *Parser) parseBinaryExpressionOrHigher(precedence ast.OperatorPrecedence) *ast.Expression {

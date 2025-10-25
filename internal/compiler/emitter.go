@@ -14,6 +14,7 @@ import (
 	"github.com/microsoft/typescript-go/internal/transformers"
 	"github.com/microsoft/typescript-go/internal/transformers/declarations"
 	"github.com/microsoft/typescript-go/internal/transformers/estransforms"
+	"github.com/microsoft/typescript-go/internal/transformers/haxetransforms"
 	"github.com/microsoft/typescript-go/internal/transformers/inliners"
 	"github.com/microsoft/typescript-go/internal/transformers/jsxtransforms"
 	"github.com/microsoft/typescript-go/internal/transformers/moduletransforms"
@@ -119,6 +120,9 @@ func getScriptTransformers(emitContext *printer.EmitContext, host printer.EmitHo
 	if options.GetJSXTransformEnabled() {
 		tx = append(tx, jsxtransforms.NewJSXTransformer(&opts))
 	}
+
+	// transform Haxe-specific syntax (must come before ES transforms)
+	tx = append(tx, haxetransforms.GetHaxeTransformer(&opts))
 
 	downleveler := estransforms.GetESTransformer(&opts)
 	if downleveler != nil {
